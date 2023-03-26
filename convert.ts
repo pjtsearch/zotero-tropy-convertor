@@ -8,7 +8,7 @@ export const convert = (item: Item, isFlat: boolean): [string, string][] => {
     ["http://purl.org/dc/elements/1.1/date", item.date || ""],
     ["http://purl.org/dc/elements/1.1/language", item.language || ""],
     ["http://purl.org/dc/elements/1.1/identifier", item.url || ""],
-    ["http://purl.org/dc/elements/1.1/rights", item.rights || ""],
+    ...parseRights(item.rights),
     ...parseCreators(item.creators),
     // ["http://purl.org/dc/elements/1.1/description", item.abstractNote || ""],
     [
@@ -94,14 +94,7 @@ const parseAbstract = (abstract?: string): { description: string[]; takenFacing?
   const takenFacingRegex = /Taken facing the (?<direction>[^\.]+)/i
   const takenFacingLine = lines.find((line) => takenFacingRegex.test(line))
   const takenFacingParsed = takenFacingLine ? takenFacingRegex.exec(takenFacingLine)?.groups?.direction : null
-
-  if (takenFacingParsed)
-    console.log(
-      takenFacingParsed,
-      CardinalDirection[cardinalConverter(capitalizeFirstLetter(takenFacingParsed)) as keyof typeof CardinalDirection]
-    )
   // Exclude taken facing lines
-
   return {
     description: lines.filter((line) => !takenFacingRegex.test(line)),
     takenFacing: takenFacingParsed
@@ -164,6 +157,49 @@ const parseExtra = (
       "http://purl.org/dc/elements/1.1/relation",
       lines ? (!lines[0].field ? lines.splice(1) : lines).map((line) => line.content).join(" --- ") : "",
     ],
+  ]
+}
+
+const licenseMap = {
+  "CC BY": "https://creativecommons.org/licenses/by/4.0/",
+  "CC BY-SA": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "CC BY-SA 4.0": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "CC BY-SA 3.0": "https://creativecommons.org/licenses/by-sa/3.0/",
+  "CC BY-NC": "https://creativecommons.org/licenses/by-nc/4.0/",
+  "CC BY-NC-SA": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+  "CC BY-ND": "https://creativecommons.org/licenses/by-nd/4.0/",
+  "CC BY-NC-ND": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+  CC0: "https://creativecommons.org/publicdomain/zero/1.0/",
+  "CC PDM": "https://creativecommons.org/publicdomain/mark/1.0/",
+  "Public domain": "https://creativecommons.org/publicdomain/mark/1.0/",
+  InC: "http://rightsstatements.org/vocab/InC/1.0/",
+  "InC-EDU": "http://rightsstatements.org/vocab/InC-EDU/1.0/",
+  "InC-NC": "http://rightsstatements.org/vocab/InC-NC/1.0/",
+  "InC-RUU": "http://rightsstatements.org/vocab/InC-RUU/1.0/",
+  "NoC-CR": "http://rightsstatements.org/vocab/NoC-CR/1.0/",
+  "NoC-NC": "http://rightsstatements.org/vocab/NoC-NC/1.0/",
+  "NoC-OKLR": "http://rightsstatements.org/vocab/NoC-OKLR/1.0/",
+  "NoC-US": "http://rightsstatements.org/vocab/NoC-US/1.0/",
+  CNE: "http://rightsstatements.org/vocab/CNE/1.0/",
+  UND: "http://rightsstatements.org/vocab/UND/1.0/",
+  NKC: "http://rightsstatements.org/vocab/NKC/1.0/",
+}
+
+const parseRights = (
+  rights?: string
+): [["http://purl.org/dc/elements/1.1/rights", string], ["http://purl.org/dc/terms/rightsHolder", string]] => {
+  const parsed = rights?.match(/^(?<license>[^\(]+)(?: \((?<holder>[^\)]+)\))?$/m)?.groups as
+    | {
+        license: string
+        holder?: string
+      }
+    | undefined
+  return [
+    [
+      "http://purl.org/dc/elements/1.1/rights",
+      parsed?.license ? licenseMap[parsed?.license as keyof typeof licenseMap] || parsed?.license : "",
+    ],
+    ["http://purl.org/dc/terms/rightsHolder", parsed?.holder?.replaceAll("[", "(").replaceAll("]", ")") || ""],
   ]
 }
 
