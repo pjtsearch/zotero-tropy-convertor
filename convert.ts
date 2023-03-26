@@ -1,6 +1,7 @@
 import { AttachmentSubrecord, Creator, CreatorType, Item, NoteSubrecord } from "./zoteroTypes.ts"
+import { cardinalConverter, CardinalDirection, degreeFromCardinal } from "https://esm.sh/cardinal-direction@1.1.1"
 
-export const convert = (item: Item): [string, string][] => {
+export const convert = (item: Item, isFlat: boolean): [string, string][] => {
   return [
     ["http://purl.org/dc/elements/1.1/title", item.title ? parseTitle(item.title)?.title || "Untitled" : "Untitled"],
     ["http://purl.org/dc/terms/alternative", item.title ? parseTitle(item.title)?.alternative || "" : ""],
@@ -29,7 +30,11 @@ export const convert = (item: Item): [string, string][] => {
     ],
     ...parseExtra(item.extra),
     ["https://tropy.org/v1/tropy#tag", item.tags.map((tag) => tag.tag).join(", ")],
-    ...parseAttachments(item.attachments, item.notes, item.abstractNote?.split("\n")),
+    [
+      "http://www.w3.org/2003/12/exif/ns#gpsImgDirection",
+      parseAbstract(item.abstractNote).takenFacing?.toString() || "",
+    ],
+    ...parseAttachments(item.attachments, item.notes, item.abstractNote, isFlat),
   ]
 }
 
@@ -76,19 +81,56 @@ const parseCreators = (
   ]
 }
 
+const flattenPath = (path?: string) => {
+  if (!path) return ""
+  const sections = path.split("/")
+  console.assert(sections.length === 3)
+  return `files/${sections[1]}-${sections[2]}`
+}
+
+const parseAbstract = (abstract?: string): { description: string[]; takenFacing?: number } => {
+  if (!abstract) return { description: [] }
+  const lines = abstract.split("\n")
+  const takenFacingRegex = /Taken facing the (?<direction>[^\.]+)/i
+  const takenFacingLine = lines.find((line) => takenFacingRegex.test(line))
+  const takenFacingParsed = takenFacingLine ? takenFacingRegex.exec(takenFacingLine)?.groups?.direction : null
+
+  if (takenFacingParsed)
+    console.log(
+      takenFacingParsed,
+      CardinalDirection[cardinalConverter(capitalizeFirstLetter(takenFacingParsed)) as keyof typeof CardinalDirection]
+    )
+  // Exclude taken facing lines
+
+  return {
+    description: lines.filter((line) => !takenFacingRegex.test(line)),
+    takenFacing: takenFacingParsed
+      ? degreeFromCardinal(
+          CardinalDirection[
+            cardinalConverter(capitalizeFirstLetter(takenFacingParsed)) as keyof typeof CardinalDirection
+          ]
+        )
+      : undefined,
+  }
+}
+
 const parseAttachments = (
   attachments?: AttachmentSubrecord[],
   notes: NoteSubrecord[] = [],
-  abstract: string[] = []
+  abstract?: string,
+  // deno-lint-ignore no-inferrable-types
+  isFlat: boolean = true
 ): [string, string][] => {
   if (!attachments) return []
   return attachments
     .filter((a) => a.path)
     .flatMap((attachment, i) => [
-      ["https://tropy.org/v1/tropy#path", `./${attachment.path!.replace("storage:", "")}`],
+      ["https://tropy.org/v1/tropy#path", `./${isFlat ? flattenPath(attachment.path) : attachment.path!}`],
       [
         "https://tropy.org/v1/tropy#note",
-        i === 0 ? [...abstract, ...notes.map(({ note }) => note)].filter((n) => n).join(" --- ") : "",
+        i === 0
+          ? [...parseAbstract(abstract).description, ...notes.map(({ note }) => note)].filter((n) => n).join(" --- ")
+          : "",
       ],
     ])
 }
@@ -123,4 +165,8 @@ const parseExtra = (
       lines ? (!lines[0].field ? lines.splice(1) : lines).map((line) => line.content).join(" --- ") : "",
     ],
   ]
+}
+
+function capitalizeFirstLetter(string: string): string {
+  return string.charAt(0).toUpperCase() + string.slice(1)
 }
