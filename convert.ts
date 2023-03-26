@@ -86,7 +86,10 @@ const parseAttachments = (
     .filter((a) => a.path)
     .flatMap((attachment, i) => [
       ["https://tropy.org/v1/tropy#path", `./${attachment.path!.replace("storage:", "")}`],
-      ["https://tropy.org/v1/tropy#note", i === 0 ? [...abstract, ...notes].filter((n) => n).join(" --- ") : ""],
+      [
+        "https://tropy.org/v1/tropy#note",
+        i === 0 ? [...abstract, ...notes.map(({ note }) => note)].filter((n) => n).join(" --- ") : "",
+      ],
     ])
 }
 
